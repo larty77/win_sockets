@@ -1,0 +1,128 @@
+#pragma once
+
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+
+#include <winsock2.h>
+
+#include "..\..\ice_net\src\ice_net.cpp"
+
+#pragma comment(lib, "ws2_32.lib")
+
+class win_udp_server final : public a_server
+{
+
+private:
+
+    SOCKET sock = INVALID_SOCKET;
+
+    sockaddr_in local_in = sockaddr_in();
+
+public:
+
+    ~win_udp_server()
+    {
+        stop();
+    }
+
+public:
+
+    end_point get_local_point() override
+    {
+        return end_point(
+            ntohl(local_in.sin_addr.s_addr),
+            ntohs(local_in.sin_port));
+    }
+
+public:
+
+    bool start(end_point& local_point)
+    {
+        WSADATA wsa;
+
+        if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) return false;
+
+        sock = socket(AF_INET, SOCK_DGRAM, 0);
+        if (sock == INVALID_SOCKET) return false;
+
+        local_in.sin_family = AF_INET;
+        local_in.sin_addr.s_addr = ntohl(local_point.get_address());
+        local_in.sin_port = ntohs(local_point.get_port());
+
+        if (bind(sock, (sockaddr*)&local_in, sizeof(local_in)) == SOCKET_ERROR) return false;
+
+        int addrLen = sizeof(local_in);
+        if (getsockname(sock, (sockaddr*)&local_in, &addrLen) != 0) return false;
+
+        return true;
+    }
+
+    bool receive_available() override
+    {
+        u_long available_data = 0;
+        if (ioctlsocket(sock, FIONREAD, &available_data) == SOCKET_ERROR) return false;
+        return (available_data > 0);
+    }
+    
+    recv_result receive() override
+    {
+        recv_result result;
+
+        sockaddr_in client_in;
+        int client_address_size = sizeof(sockaddr_in);
+
+        u_long available_data = 0;
+        if (ioctlsocket(sock, FIONREAD, &available_data) == SOCKET_ERROR) return result;
+
+        if (available_data == 0) return result;
+
+        char* recv_arr = new char[available_data];
+        int recv = recvfrom(sock, recv_arr, available_data, 0, (sockaddr*)&client_in, &client_address_size);
+
+        if (recv == SOCKET_ERROR)
+        {
+            delete[] recv_arr;
+            return result;
+        }
+
+        result.recv_arr = recv_arr;
+        result.recv_size = recv;
+
+        result.recv_point.set_address(ntohl(client_in.sin_addr.s_addr));
+        result.recv_point.set_port(ntohs(client_in.sin_port));
+
+        return result;
+    }
+
+    bool send(char* data, unsigned short data_size, end_point& remote_point) override
+    {
+        sockaddr_in client_in;
+
+        client_in.sin_family = AF_INET;
+        client_in.sin_addr.s_addr = htonl(remote_point.get_address());
+        client_in.sin_port = htons(remote_point.get_port());
+
+        int result = sendto(sock, data, data_size, 0, (sockaddr*)&client_in, sizeof(client_in));
+
+        if (result == SOCKET_ERROR) return false;
+
+        return true;
+    }
+
+    void stop() override
+    {
+        if (sock == INVALID_SOCKET) return;
+
+        closesocket(sock);
+
+        sock = INVALID_SOCKET;
+
+        local_in.sin_addr.s_addr = 0;
+        local_in.sin_port = 0;
+
+        WSACleanup();
+    }
+};
+
+#include "..\..\ice_net\src\ice.rudp\rudp_server.cpp"
+
+template bool rudp_server::try_start<win_udp_server>(end_point local_point);
