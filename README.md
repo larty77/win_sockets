@@ -6,7 +6,9 @@
 
 Use it in <a href = "https://github.com/larty77/ice_net">ice_net</a>
 
-Client:
+<h2 tabindex="-1" dir="auto"><a class="anchor" aria-hidden="true"></a>Usage</h2>
+
+<h3>Client:</h3>
 
 ```cpp
 void start()
@@ -28,7 +30,7 @@ void start()
 }
 ```
 
-Server:
+<h3>Server:</h3>
 
 ```cpp
 void start()
@@ -50,3 +52,4 @@ void handle(rudp_connection& c, ice_data::read& data)
 	std::cout << c.get_remote_point().get_port_str() << ": " << data.get_string() << "\n";
 }
 ```
+
